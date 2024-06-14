@@ -1,6 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import adapter from "webrtc-adapter";
 import { Button } from "./ui/button";
+import CallModal from "./call-modal";
+import { MdPhoneInTalk } from "react-icons/md";
+import { FaPlus, FaVideo, FaVideoSlash } from "react-icons/fa";
+import { HiOutlinePlus } from "react-icons/hi";
+import { MdCall, MdCallEnd } from "react-icons/md";
+import { PiMicrophoneLight, PiMicrophoneSlash } from "react-icons/pi";
+import { PhoneIcon } from "lucide-react";
+import { Input } from "./ui/input";
 
 interface IceCandidate {
   candidate: string;
@@ -28,6 +36,8 @@ const PaxCallClient: React.FC = () => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
+  const [callState, setCallState] = useState("calling");
+  const [isMicrophone, setIsMicrophone] = useState(true);
 
   useEffect(() => {
     const initWebSocket = async () => {
@@ -143,7 +153,7 @@ const PaxCallClient: React.FC = () => {
 
   const handleSdpAnswer = async (msg: SdpAnswerMessage) => {
     console.log("Handling SDP answer:", msg);
-
+    setCallState("closed");
     if (peerConnection) {
       var stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -208,7 +218,7 @@ const PaxCallClient: React.FC = () => {
           });
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
-            remoteVideoRef.current.srcObject = stream;
+            // remoteVideoRef.current.srcObject = stream;
           }
         })
         .catch((error) => {
@@ -283,6 +293,23 @@ const PaxCallClient: React.FC = () => {
         };
         // Convert the message to JSON and send it over the WebSocket
         sendMessage(message);
+
+        if (localVideoRef.current) {
+          navigator.mediaDevices
+            .getUserMedia({ video: true, audio: true })
+            .then((stream) => {
+              console.log("Got local stream:", stream);
+              stream.getTracks().forEach((track) => {
+                peerConnection.addTrack(track, stream);
+              });
+              if (localVideoRef.current) {
+                remoteVideoRef.current.srcObject = stream;
+              }
+            })
+            .catch((error) => {
+              console.error("Error accessing media devices.", error);
+            });
+        }
       }
     } catch (error) {
       console.error("Error enabling video");
@@ -299,29 +326,129 @@ const PaxCallClient: React.FC = () => {
   };
 
   return (
-    <div>
-      <h1>PaxCall Client</h1>
-      <p>{session}</p>
-      <input
-        type="text"
-        placeholder="session B"
-        value={sessionB}
-        onChange={(e) => setSessionB(e.target.value)}
-      />
-      <Button onClick={startCall} disabled={isVideoEnabled}>
-        Start Call
-      </Button>
-      <Button onClick={startVideoTransmission}>Enable Video</Button>
-      <Button onClick={endCall}>End Call</Button>
+    <div className="flex flex-col h-full">
+      <div>
+        <h1>PaxCall Client</h1>
+        <p>{session}</p>
+        <input
+          type="text"
+          placeholder="session B"
+          value={sessionB}
+          onChange={(e) => setSessionB(e.target.value)}
+        />
+        {/* <Button onClick={startCall} disabled={isVideoEnabled}>
+          Start Call
+        </Button> */}
+        <CallModal
+          handleIncomingCall={handleIncomingCall}
+          openDialog={false}
+          callState={callState}
+          callee={{
+            username: "Session A",
+            avatar: "/public/avatar.png",
+            id: "1",
+          }}
+        >
+          <Button onClick={startCall} className="mx-4">
+            Call <MdPhoneInTalk className="size-5 ml-2" />
+          </Button>
+        </CallModal>
+        <Button onClick={startVideoTransmission}>Enable Video</Button>
+        {/* <Button onClick={endCall}>End Call</Button> */}
 
-      {incomingCall && (
-        <div>
-          <p>Incoming call from session: {incomingCall.sessionA}</p>
-          <Button onClick={handleIncomingCall}>Accept Call</Button>
+        {incomingCall && (
+          <CallModal
+            handleIncomingCall={handleIncomingCall}
+            openDialog={true}
+            callState="incoming"
+            callee={{
+              username: "Session A",
+              avatar: "/public/avatar.png",
+              id: "1",
+            }}
+          ></CallModal>
+        )}
+      </div>
+      <div className="flex flex-col">
+        <div className="flex-1 flex p-4 items-center justify-center bg-gray-100 dark:bg-gray-950">
+          <div className=" max-w-7xl mx-4 sm:mx-6 md:mx-8 lg:mx-10 xl:mx-12 bg-white dark:bg-gray-900 rounded-2xl shadow-lg overflow-hidden">
+            <div className="flex h-[500px]">
+              <div className="flex-1 flex flex-col">
+                <div className="flex-1 relative">
+                  <video
+                    className="w-full h-full object-cover"
+                    ref={localVideoRef}
+                    autoPlay
+                    muted
+                  />
+                  <div className="absolute top-4 left-4 bg-gray-900/50 text-white px-3 py-1 rounded-full text-sm">
+                    Session A
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 flex flex-col">
+                <div className="flex-1 relative">
+                  <video
+                    className="w-full h-full object-cover"
+                    ref={remoteVideoRef}
+                    autoPlay
+                    muted
+                  />
+                  <div className="absolute top-4 left-4 bg-gray-900/50 text-white px-3 py-1 rounded-full text-sm">
+                    Session B
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="col-span-2 bg-gray-100 dark:bg-gray-800 p-4 flex items-center gap-4">
+              <Button
+                variant="default"
+                size="icon"
+                className="size-10 rounded-full bg-green-500 hover:bg-green-500/70"
+                onClick={() => {
+                  setIsVideoEnabled(!isVideoEnabled);
+                  startVideoTransmission();
+                }}
+              >
+                {isVideoEnabled ? (
+                  <FaVideo className="size-5" />
+                ) : (
+                  <FaVideoSlash className="size-5" />
+                )}
+              </Button>
+              <Button
+                variant="default"
+                size="icon"
+                className="size-10 rounded-full bg-green-500 hover:bg-green-500/70"
+                onClick={() => setIsMicrophone(!isMicrophone)}
+              >
+                {isMicrophone ? (
+                  <PiMicrophoneLight className="size-5" />
+                ) : (
+                  <PiMicrophoneSlash className="size-5" />
+                )}
+              </Button>
+
+              <Button
+                variant="default"
+                size="icon"
+                className="size-10 rounded-full bg-red-500 hover:bg-red-500/70"
+                onClick={endCall}
+              >
+                <MdCallEnd className="size-5" />
+              </Button>
+              <Button
+                variant="default"
+                size="icon"
+                className="size-10 rounded-full bg-green-500 hover:bg-green-500/70"
+                // onClick={handleSubmit}
+              >
+                <HiOutlinePlus className="size-5" />
+              </Button>
+            </div>
+          </div>
         </div>
-      )}
-      <video ref={localVideoRef} autoPlay muted />
-      <video ref={remoteVideoRef} autoPlay />
+      </div>
     </div>
   );
 };
